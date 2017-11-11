@@ -4,8 +4,8 @@
 //
 //  Created by George Bauer on 9/3/17.
 //  Copyright © 2017 GeorgeBauer. All rights reserved.
-//  
 
+// this is to test git
 import UIKit
 import ImageIO
 //import MapKit

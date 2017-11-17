@@ -164,12 +164,11 @@ class ViewController: UIViewController {
         exposureTxt = String(format:"%@mm ISO:%@  f%@ 1/%.0f sec  mode=%@ bias=%@",mmLens, ISO, fNumber, shutter, exposureMode, exposureBias)
         lblExposure.text = exposureTxt
         
-        var isValidGPS = "V"
-        if let temp = exif[kCGImagePropertyGPSStatus as String] as? String { isValidGPS = temp  }
+        let isValidGPS = exif[kCGImagePropertyGPSStatus as String] as? String ?? "V"
         if isValidGPS == "A" {
-            let gpsStat = (exif[kCGImagePropertyGPSStatus as String] as! String)
+            let gpsStat = exif[kCGImagePropertyGPSStatus as String] as? String ?? "?"
             print("\ngpsStat = " + gpsStat)
-            if exif[kCGImagePropertyGPSStatus as String] as! String == "A" {
+            if gpsStat == "A" {
                 var txtLatitude = ""
                 var txtLongitude = ""
                 if let gpsLat = exif["Latitude"] as? Double {
@@ -300,7 +299,9 @@ class ViewController: UIViewController {
             }
             //print ("ImageSource = \( imageSource.debugDescription )")
             
-            let imageProperties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as! Dictionary<String, AnyObject?>?
+            guard let imageProperties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? Dictionary<String, AnyObject> else {
+                return (nil, "Could not get imageProperties")
+            }
             
             return (imageProperties, "")
             
@@ -362,8 +363,8 @@ class ViewController: UIViewController {
             
             for case let fileURL as URL in enumerator {
                 let resourceValues = try fileURL.resourceValues(forKeys: Set(resourceKeys))
-                let fileName = resourceValues.name!
-                let filePath = resourceValues.path!
+                let fileName = resourceValues.name ?? "?"
+                let filePath = resourceValues.path ?? "?"
                 if fileName.hasSuffix("jpg") && fileName.hasPrefix("se"){
                     // ---- Get dateTimeOriginal here ----
                     let exif = getExif(filePath: filePath)

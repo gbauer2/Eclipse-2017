@@ -5,12 +5,24 @@
 //  Created by George Bauer on 9/3/17.
 //  Copyright © 2017 GeorgeBauer. All rights reserved.
 
-// this is to test git
+/*
+TODO: ToDo List
+ 1) Stop Play at se87
+ 2) Landscape mode
+ 3) Speed up Play
+
+Get Version from info.plist
+Fix "Minutes after" calculation
+Stop AutoPlay at best image
+Increase font size for Prev/Next
+*/
+
 import UIKit
 import ImageIO
 //import MapKit
 
 class ViewController: UIViewController {
+    //MARK: ---- @IBOutleta ----
     @IBOutlet weak var imgMain: UIImageView!
     @IBOutlet weak var lblDateTime: UILabel!
     @IBOutlet weak var lblLatiude: UILabel!
@@ -20,15 +32,121 @@ class ViewController: UIViewController {
     @IBOutlet weak var lblExposure: UILabel!
     @IBOutlet weak var btnPlayPause: UIButton!
     @IBOutlet weak var lblVersion: UILabel!
-    
-    let version = "1.0.1"
-    let fadeSec = 0.8
+
+    //MARK: ---- Properties ----
+    let fadeSec     = 0.8
     let secTotality = 60 * (60 * 14 + 39) + 23          //Totality started at approx 14:39:23 EDT
-    var nextImgNum = 0
+    var nextImgNum  = 0
+    var gAppVersion = ""
+    var gAppBuild   = ""
 
     typealias imageFileInfo = (name: String, path: String, secEDT: Int, secToNext: Int)
     var imageFileArr = [imageFileInfo]()
-    
+
+    var isAnimating = false
+    var timer = Timer()
+
+    //MARK: ---- iOS Overrides & built-in functions ----
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        // Do any additional setup after loading the view, typically from a nib.
+        gAppVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
+        gAppBuild   = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"
+
+        lblVersion.text = "Version " + gAppVersion
+
+        //---- Fill an array with the names & paths of jpg files ----
+        let filemgr = FileManager.default
+        do {
+            let resourceKeys : [URLResourceKey] = [ .isDirectoryKey, .nameKey, .pathKey, .typeIdentifierKey, .localizedTypeDescriptionKey]
+            let documentsURL = Bundle.main.bundleURL
+            let enumerator = filemgr.enumerator(at: documentsURL,
+                                                includingPropertiesForKeys: resourceKeys,
+                                                options: [.skipsHiddenFiles], errorHandler: { (url, error) -> Bool in
+                                                    print("directoryEnumerator error at \(url): ", error)
+                                                    return true
+            })!
+
+            for case let fileURL as URL in enumerator {
+                let resourceValues = try fileURL.resourceValues(forKeys: Set(resourceKeys))
+                let fileName = resourceValues.name ?? "?"
+                let filePath = resourceValues.path ?? "?"
+                if fileName.hasSuffix("jpg") && fileName.hasPrefix("se"){
+                    // ---- Get dateTimeOriginal here ----
+                    let exif = getExif(filePath: filePath)
+                    let dateTimeOriginal = exif[kCGImagePropertyExifDateTimeOriginal as String] as? String ?? fileName + " not found!"
+                    //print("FileName: \(fileName), dateTimeOriginal: \(dateTimeOriginal)")
+                    let dt = decodeDateTime(dateTime: dateTimeOriginal)
+                    var secNow = 60 * (60 * dt.hr + dt.min) + dt.sec
+                    if dt.day != 21 || dt.mon != 8 || dt.yr != 2017 {secNow = 0}
+                    imageFileArr.append((fileName,filePath,secNow,0))
+                }//endif
+                //print(fileURL.path, resourceValues.isDirectory!, resourceValues.typeIdentifier!, resourceValues.localizedTypeDescription!)
+                //                            false                         public.jpeg                         JPEG image
+            }//next
+
+            print("imageFileArr.count = ", imageFileArr.count)
+            if imageFileArr.count == 0 {
+                print("No Images found!!")
+                lblDateTime.text = "No Images found!!"
+                return
+            }
+            for i in 0..<imageFileArr.count - 1 {
+                var secs = imageFileArr[i + 1].secEDT - imageFileArr[i].secEDT
+                if secs < 0 || secs > 120 {secs = 120}
+                imageFileArr[i].secToNext = secs
+            }//next i
+            imageFileArr[imageFileArr.count - 1].secToNext = -1
+            for item in imageFileArr {
+                print("\(item.name) \(item.secEDT) \(item.secToNext) ")
+            }
+        } catch {
+            print("Error getting image files -> ", error)
+        }//catch
+
+    }//end func viewDidLoad
+
+    //------ override viewDidAppear ------
+    override func viewDidAppear(_ animated: Bool) {
+        if imageFileArr.count > 0 {
+            clearLabels()
+            DisplayNumberedImage(imgNum: 0, fadeInSec: 4.0)
+        }
+    }
+
+    //MARK: ---- @IBActions ----
+    /*
+     Play/Pause buttons
+     in playMode:
+     When Timer hits:
+     1.Display Image(nextImgNum)
+     2.nextImgNum += 1
+     3.if nextImgNum == 0 Stop
+     4.Get Image(nextImgNum); calc elapsed time; set timer
+     Next/Prev pressed
+     1.playMode = Off; Timer disabled
+     2.nextImgNum = nextImgNum +/- 1
+     3.Display Image(nextImgNum)
+     Play Button Pressed:
+     1.playMode On; set Timer to 2sec
+     2.nextImgNum += 1
+     at Startup:
+     1.playMode = Off; Timer disabled
+     2.nextImgNum = 0;
+     3.Slow Display Image(nextImgNum)
+     */
+
+    //------ "Play" Button tapped ------
+    @IBAction func btnPlayPausePress(_ sender: Any) {
+        if isAnimating {
+            StopAnimation()
+        } else {
+            timer = Timer.scheduledTimer(timeInterval: 0.9, target: self, selector: #selector(ViewController.animate), userInfo: nil, repeats: true)
+            btnPlayPause.setTitle("Stop", for: [])
+            isAnimating = true
+        }
+    }//end @IBAction func btnPlayPausePress
+
     //------ "Next" Button pressed ------
     @IBAction func btnNextPress(_ sender: Any) {
         if isAnimating {StopAnimation()}
@@ -43,6 +161,7 @@ class ViewController: UIViewController {
         DisplayNumberedImage(imgNum: nextImgNum, fadeInSec: fadeSec)
     }//end @IBAction func btnPrevPress
     
+    //MARK: ---- My Functions ----
     func incrNextImgNum() {
         nextImgNum += 1
         if nextImgNum >= imageFileArr.count {nextImgNum = 0}
@@ -52,53 +171,17 @@ class ViewController: UIViewController {
         if nextImgNum < 0 {nextImgNum = imageFileArr.count - 1}
     }
     
-    var isAnimating = false
-    var timer = Timer()
-    
     func animate() {
         incrNextImgNum()
         DisplayNumberedImage(imgNum: nextImgNum, fadeInSec: fadeSec)
     }//end func Animate
-    
-    @IBAction func btnPlayPausePress(_ sender: Any) {
-        if isAnimating {
-            StopAnimation()
-        } else {
-            timer = Timer.scheduledTimer(timeInterval: 0.9, target: self, selector: #selector(ViewController.animate), userInfo: nil, repeats: true)
-            btnPlayPause.setTitle("Stop", for: [])
-            isAnimating = true
-        }
-    }//end @IBAction func btnPlayPausePress
     
     func StopAnimation() {
         timer.invalidate()
         btnPlayPause.setTitle("Play", for: [])
         isAnimating = false
     }
-    
-   
-/*
-     Play/Pause buttons
-     in playMode:
-        When Timer hits: 
-            1.Display Image(nextImgNum)
-            2.nextImgNum += 1
-            3.if nextImgNum == 0 Stop
-            4.Get Image(nextImgNum); calc elapsed time; set timer
-        Next/Prev pressed
-            1.playMode = Off; Timer disabled
-            2.nextImgNum = nextImgNum +/- 1
-            3.Display Image(nextImgNum)
-        Play Button Pressed:
-            1.playMode On; set Timer to 2sec
-            2.nextImgNum += 1
-        at Startup:
-            1.playMode = Off; Timer disabled
-            2.nextImgNum = 0;
-            3.Slow Display Image(nextImgNum)
- */
-    
-    
+
     //--------- Fade-In the new image & Update the text --------
     func DisplayNumberedImage(imgNum: Int, fadeInSec: Double)  {
         clearLabels()
@@ -121,19 +204,19 @@ class ViewController: UIViewController {
 
         let exif = getExif(filePath: filePath)
 
-        var dateTimeOriginal = imgFullName + " not found!"
-        if let temp = exif[kCGImagePropertyExifDateTimeOriginal as String] as? String { dateTimeOriginal = temp }
+        let dateTimeOriginal = exif[kCGImagePropertyExifDateTimeOriginal as String] as? String ?? imgFullName + " not found!"
+
         print("dateTimeOriginal: \(dateTimeOriginal)")
         //let dt = decodeDateTime(dateTime: dateTimeOriginal)
         //let secNow = 60 * (60 * dt.hr + dt.min) + dt.sec
         let secNow = imageFileArr[imgNum].secEDT
         let secToGo = secTotality - secNow
-        let minToGo = (secToGo + 30) / 60
+        //let minToGo = (secToGo + 30) / 60
         //var minToGoTxt = ""
         
         switch secToGo {
         case 99...9999999:
-            lblMinuteToGo.text = String(minToGo) + " minutes to go"
+            lblMinuteToGo.text = formatMMSS(secs: secToGo) + " minutes to go"
         case 1...99:
             lblMinuteToGo.text = String(secToGo) + " seconds to go"
         case 0:
@@ -141,9 +224,9 @@ class ViewController: UIViewController {
         case -99...(-1):
             lblMinuteToGo.text = String(-secToGo) + " seconds after"
         default:
-            lblMinuteToGo.text = String(-minToGo) + " minutes after"
+            lblMinuteToGo.text = "\(-secToGo / 60):\(-secToGo % 60) minutes after"
         }
-        
+
         if secNow == 0 { lblMinuteToGo.text = "The Sun" }
 
         var exposureTxt = "|"
@@ -202,11 +285,20 @@ class ViewController: UIViewController {
         
         let nsStr = imgName as NSString
         lblDateTime.text = nsStr.substring(to: 4) + "  " + dateTimeOriginal
-        
+        if nsStr.hasPrefix("se87") {
+            StopAnimation()
+        }
         //imgMain.image = img
         Dissolve(toImage: img, duration: fadeInSec)
         
     }//end DisplayNumberedImage
+
+    func formatMMSS(secs: Int) -> String {
+        let sec = abs(secs)
+        var secStr = String(sec % 60)
+        if secStr.count < 2 { secStr = "0" + secStr }
+        return String(secs / 60) + ":" + secStr
+    }
 
     //------ Clear the text - leave placeholder ------
     func clearLabels() {
@@ -343,80 +435,9 @@ class ViewController: UIViewController {
 //-------------------------------- End Exif Data Class? ----------------------------------
 //----------------------------------------------------------------------------------------
     
-    
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        // Do any additional setup after loading the view, typically from a nib.
-        lblVersion.text = "Version " + version
-        
-        //---- Fill an array with the names & paths of jpg files ----
-        let filemgr = FileManager.default
-        do {
-            let resourceKeys : [URLResourceKey] = [ .isDirectoryKey, .nameKey, .pathKey, .typeIdentifierKey, .localizedTypeDescriptionKey]
-            let documentsURL = Bundle.main.bundleURL
-            let enumerator = filemgr.enumerator(at: documentsURL,
-                                                includingPropertiesForKeys: resourceKeys,
-                                                options: [.skipsHiddenFiles], errorHandler: { (url, error) -> Bool in
-                                                    print("directoryEnumerator error at \(url): ", error)
-                                                    return true
-            })!
-            
-            for case let fileURL as URL in enumerator {
-                let resourceValues = try fileURL.resourceValues(forKeys: Set(resourceKeys))
-                let fileName = resourceValues.name ?? "?"
-                let filePath = resourceValues.path ?? "?"
-                if fileName.hasSuffix("jpg") && fileName.hasPrefix("se"){
-                    // ---- Get dateTimeOriginal here ----
-                    let exif = getExif(filePath: filePath)
-                    var dateTimeOriginal = fileName + " not found!"
-                    if let temp = exif[kCGImagePropertyExifDateTimeOriginal as String] as? String { dateTimeOriginal = temp }
-                    //print("FileName: \(fileName), dateTimeOriginal: \(dateTimeOriginal)")
-                    let dt = decodeDateTime(dateTime: dateTimeOriginal)
-                    var secNow = 60 * (60 * dt.hr + dt.min) + dt.sec
-                    if dt.day != 21 || dt.mon != 8 || dt.yr != 2017 {secNow = 0}
-                    imageFileArr.append((fileName,filePath,secNow,0))
-                }//endif
-                //print(fileURL.path, resourceValues.isDirectory!, resourceValues.typeIdentifier!, resourceValues.localizedTypeDescription!)
-                //                            false                         public.jpeg                         JPEG image
-            }//next
-            
-            print("imageFileArr.count = ", imageFileArr.count)
-            if imageFileArr.count == 0 {
-                print("No Images found!!")
-                lblDateTime.text = "No Images found!!"
-                return
-            }
-            for i in 0..<imageFileArr.count - 1 {
-                var secs = imageFileArr[i + 1].secEDT - imageFileArr[i].secEDT
-                if secs < 0 || secs > 120 {secs = 120}
-                imageFileArr[i].secToNext = secs
-            }//next i
-            imageFileArr[imageFileArr.count - 1].secToNext = -1
-            for item in imageFileArr {
-                print("\(item.name) \(item.secEDT) \(item.secToNext) ")
-            }
-        } catch {
-            print("Error getting image files -> ", error)
-        }//catch
-        
-    }//end func viewDidLoad
-
-    //------ override didReceiveMemoryWarning ------
-    override func didReceiveMemoryWarning() {
-        super.didReceiveMemoryWarning()
-        // Dispose of any resources that can be recreated.
-    }
-    
-    //------ override viewDidAppear ------
-    override func viewDidAppear(_ animated: Bool) {
-        if imageFileArr.count > 0 {
-            clearLabels()
-            DisplayNumberedImage(imgNum: 0, fadeInSec: 4.0)
-        }
-    }
-
 }//end Class
 
+//MARK: Exif Data
 /*
  ExifVersion ( 2, 3 )
  ISOSpeedRatings ( 200 )
@@ -476,5 +497,4 @@ class ViewController: UIViewController {
  DateStamp 2017:08:21
  MapDatum WGS-84
 --------------------------
- 
  */

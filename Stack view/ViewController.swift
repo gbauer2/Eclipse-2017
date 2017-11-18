@@ -7,14 +7,11 @@
 
 /*
 TODO: ToDo List
- 1) Stop Play at se87
- 2) Landscape mode
- 3) Speed up Play
+ 1) Landscape mode
+ 2) Speed up Play in Settings
+ 3) propotional timing of images
+ 4) zoom in
 
-Get Version from info.plist
-Fix "Minutes after" calculation
-Stop AutoPlay at best image
-Increase font size for Prev/Next
 */
 
 import UIKit
@@ -39,11 +36,11 @@ class ViewController: UIViewController {
     var nextImgNum  = 0
     var gAppVersion = ""
     var gAppBuild   = ""
-
-    typealias imageFileInfo = (name: String, path: String, secEDT: Int, secToNext: Int)
+    var isAnimating = false
     var imageFileArr = [imageFileInfo]()
 
-    var isAnimating = false
+    typealias imageFileInfo = (name: String, path: String, secEDT: Int, secToNext: Int)
+
     var timer = Timer()
 
     //MARK: ---- iOS Overrides & built-in functions ----
@@ -52,7 +49,6 @@ class ViewController: UIViewController {
         // Do any additional setup after loading the view, typically from a nib.
         gAppVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
         gAppBuild   = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"
-
         lblVersion.text = "Version " + gAppVersion
 
         //---- Fill an array with the names & paths of jpg files ----
@@ -60,12 +56,15 @@ class ViewController: UIViewController {
         do {
             let resourceKeys : [URLResourceKey] = [ .isDirectoryKey, .nameKey, .pathKey, .typeIdentifierKey, .localizedTypeDescriptionKey]
             let documentsURL = Bundle.main.bundleURL
-            let enumerator = filemgr.enumerator(at: documentsURL,
+            guard let enumerator = filemgr.enumerator(at: documentsURL,
                                                 includingPropertiesForKeys: resourceKeys,
-                                                options: [.skipsHiddenFiles], errorHandler: { (url, error) -> Bool in
-                                                    print("directoryEnumerator error at \(url): ", error)
+                                                options: [.skipsHiddenFiles],
+                                                errorHandler: { (url, error) -> Bool in
+                                                    print("😡directoryEnumerator error at \(url): ", error)
+                                                    self.lblMinuteToGo.text = "DirectoryEnumerator error at \(url): "
+                                                    self.lblDateTime.text = error.localizedDescription
                                                     return true
-            })!
+            }) else {lblExposure.text = "filemgr.enumerator failed!"; return }
 
             for case let fileURL as URL in enumerator {
                 let resourceValues = try fileURL.resourceValues(forKeys: Set(resourceKeys))
@@ -85,9 +84,9 @@ class ViewController: UIViewController {
                 //                            false                         public.jpeg                         JPEG image
             }//next
 
-            print("imageFileArr.count = ", imageFileArr.count)
+            print("😀imageFileArr.count = ", imageFileArr.count)
             if imageFileArr.count == 0 {
-                print("No Images found!!")
+                print("😡No Images found!!")
                 lblDateTime.text = "No Images found!!"
                 return
             }
@@ -98,10 +97,10 @@ class ViewController: UIViewController {
             }//next i
             imageFileArr[imageFileArr.count - 1].secToNext = -1
             for item in imageFileArr {
-                print("\(item.name) \(item.secEDT) \(item.secToNext) ")
+                print("☼\(item.name) \(item.secEDT) \(item.secToNext) ")
             }
         } catch {
-            print("Error getting image files -> ", error)
+            print("😡Error getting image files -> ", error)
         }//catch
 
     }//end func viewDidLoad
@@ -110,7 +109,7 @@ class ViewController: UIViewController {
     override func viewDidAppear(_ animated: Bool) {
         if imageFileArr.count > 0 {
             clearLabels()
-            DisplayNumberedImage(imgNum: 0, fadeInSec: 4.0)
+            DisplayNumberedImage(imgNum: 0, fadeInSec: 2.0)
         }
     }
 
@@ -187,6 +186,10 @@ class ViewController: UIViewController {
         clearLabels()
         //let numStr = String(format: "%02d", arguments: [imgNum])
         //let imgName = "Len" + numStr
+        if imgNum < 0 || imgNum >= imageFileArr.count {
+            lblDateTime.text = "Image#\(imgNum) not in array"
+            return
+        }
         let imgFullName = imageFileArr[imgNum].name
         let nameParts = imgFullName.components(separatedBy: ".")
         let imgName = nameParts[0]
@@ -206,7 +209,7 @@ class ViewController: UIViewController {
 
         let dateTimeOriginal = exif[kCGImagePropertyExifDateTimeOriginal as String] as? String ?? imgFullName + " not found!"
 
-        print("dateTimeOriginal: \(dateTimeOriginal)")
+        print("⏰dateTimeOriginal: \(dateTimeOriginal)")
         //let dt = decodeDateTime(dateTime: dateTimeOriginal)
         //let secNow = 60 * (60 * dt.hr + dt.min) + dt.sec
         let secNow = imageFileArr[imgNum].secEDT
@@ -250,7 +253,7 @@ class ViewController: UIViewController {
         let isValidGPS = exif[kCGImagePropertyGPSStatus as String] as? String ?? "V"
         if isValidGPS == "A" {
             let gpsStat = exif[kCGImagePropertyGPSStatus as String] as? String ?? "?"
-            print("\ngpsStat = " + gpsStat)
+            print("\n✿gpsStat = " + gpsStat)
             if gpsStat == "A" {
                 var txtLatitude = ""
                 var txtLongitude = ""
@@ -361,7 +364,7 @@ class ViewController: UIViewController {
     //------------------ Get FilePath from fileName,fileType ----------------
     func getFilePath(fileName: String, fileType: String) -> (val: String, error: String) {
         guard let filePath = Bundle.main.path(forResource: fileName, ofType: fileType) else {
-            print("\n\(fileName).\(fileType) not found!")
+            print("\n😡\(fileName).\(fileType) not found!")
             return ("", "\(fileName).\(fileType) not found!")
         }
         return (filePath, "")
@@ -370,7 +373,7 @@ class ViewController: UIViewController {
     //------------------ Get UIImage from filePath -----------------
     func getUiImage(filePath: String) -> (imageUi: UIImage?, error: String) {
         guard let image = UIImage(contentsOfFile: filePath)  else {
-            print("UIImage not Created")
+            print("😡UIImage not Created")
             return (nil, "UIImage not Created")
         }
         return (image, "")
@@ -386,7 +389,7 @@ class ViewController: UIViewController {
             //print ("data = \( data.debugDescription )")
             
             guard let imageSource = CGImageSourceCreateWithData(data as CFData, nil) else {
-                print ("imageSource could not be created for \(filePath)")
+                print ("😡imageSource could not be created for \(filePath)")
                 return (nil, "imageSource could not be created for \(filePath)")
             }
             //print ("ImageSource = \( imageSource.debugDescription )")
@@ -399,7 +402,7 @@ class ViewController: UIViewController {
             
         }//end do
         catch {
-            print ("\ndata = try Data(contentsOf: url) failed!")
+            print ("\n😡data = try Data(contentsOf: url) failed!")
             return (nil, "data = try Data(contentsOf: url) failed!")
         }//end catch
         
@@ -407,14 +410,21 @@ class ViewController: UIViewController {
     
     //----------------------- Get Exif Dictionary ---------------------
     func getExif(filePath: String) -> Dictionary<String, AnyObject> {
+        var nilDict = ["isValidGPS": false as AnyObject, "error": "Unknown Error" as AnyObject]
         let imagePropertiesTuple = getImageProperties(filePath: filePath)
         if imagePropertiesTuple.error != "" {
-            let nilDict = ["isValidGPS": false as AnyObject, "error": imagePropertiesTuple.error as AnyObject]
+            nilDict["error"] = imagePropertiesTuple.error as AnyObject
             return nilDict
         }
         
-        var exifDict = imagePropertiesTuple.imageProperties![kCGImagePropertyExifDictionary as String] as! Dictionary<String, AnyObject>
-        let gpsDict = imagePropertiesTuple.imageProperties![kCGImagePropertyGPSDictionary as String] as! Dictionary<String, AnyObject>
+        guard var exifDict = imagePropertiesTuple.imageProperties?[kCGImagePropertyExifDictionary as String] as? Dictionary<String, AnyObject> else {
+            nilDict["error"] = "Could not create exifDict" as AnyObject
+            return nilDict
+        }
+        guard let gpsDict = imagePropertiesTuple.imageProperties?[kCGImagePropertyGPSDictionary as String] as? Dictionary<String, AnyObject> else {
+            exifDict["error"] = "Could not get gpsDict" as AnyObject
+            return exifDict
+        }
         
         //exifDict.forEach {(key, val) in print(key, val)}  // print exif data
         

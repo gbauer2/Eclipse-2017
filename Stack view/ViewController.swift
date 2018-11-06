@@ -10,7 +10,7 @@ TODO: ToDo List
  1) Landscape mode
  2) Speed up Play in Settings
  3) propotional timing of images
- 4) zoom in
+ 4) pinch zoom/pan
 
 */
 
@@ -85,6 +85,7 @@ class ViewController: UIViewController {
             }//next
 
             print("😀imageFileArr.count = ", imageFileArr.count)
+            imageFileArr.sort(by: { $0.name < $1.name })
             if imageFileArr.count == 0 {
                 print("😡No Images found!!")
                 lblDateTime.text = "No Images found!!"

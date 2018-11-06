@@ -171,7 +171,7 @@ class ViewController: UIViewController {
         if nextImgNum < 0 {nextImgNum = imageFileArr.count - 1}
     }
     
-    func animate() {
+    @objc func animate() {
         incrNextImgNum()
         DisplayNumberedImage(imgNum: nextImgNum, fadeInSec: fadeSec)
     }//end func Animate

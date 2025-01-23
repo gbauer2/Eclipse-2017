@@ -1,9 +1,9 @@
 //
 //  ViewController.swift
-//  Stack view
+//  Eclipse 2017
 //
 //  Created by George Bauer on 9/3/17.
-//  Copyright © 2017 GeorgeBauer. All rights reserved.
+//  Copyright © 2017-2024 GeorgeBauer. All rights reserved.
 
 /*
 TODO: ToDo List
@@ -47,9 +47,9 @@ class ViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         // Do any additional setup after loading the view, typically from a nib.
-        gAppVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
+        gAppVersion = Bundle.main.infoDictionary?["CFBundleDisplayName"] as? String ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "??"
         gAppBuild   = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"
-        lblVersion.text = "Version " + gAppVersion
+        lblVersion.text = "Version \(gAppVersion)(\(gAppBuild))"
 
         //---- Fill an array with the names & paths of jpg files ----
         let filemgr = FileManager.default
